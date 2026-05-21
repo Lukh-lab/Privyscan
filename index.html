@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PrivyScan — Android Privacy Scanner</title>
+  <meta name="description" content="PrivyScan scans your installed apps for hidden privacy risks — permissions, trackers, and real-time background activity — all in one place." />
+  <style>
+    /* ── Variables ─────────────────────────────────────────────────────── */
+    :root {
+      --bg-start:   #020617;
+      --bg-mid:     #0F172A;
+      --blue:       #3B82F6;
+      --purple:     #8B5CF6;
+      --green:      #10B981;
+      --amber:      #F59E0B;
+      --red:        #EF4444;
+      --text:       #F8FAFC;
+      --muted:      #9CA3AF;
+      --card-bg:    rgba(255,255,255,0.04);
+      --card-border:rgba(255,255,255,0.10);
+      --radius:     16px;
+    }
+
+    /* ── Reset ─────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(180deg, var(--bg-start) 0%, var(--bg-mid) 50%, var(--bg-start) 100%);
+      color: var(--text); min-height: 100vh; line-height: 1.6; overflow-x: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; }
+
+    /* ── Background orbs ────────────────────────────────────────────────── */
+    .bg-orb {
+      position: fixed; border-radius: 50%;
+      filter: blur(80px); pointer-events: none; z-index: 0;
+    }
+    .bg-orb-1 {
+      width: 640px; height: 640px;
+      background: radial-gradient(circle, rgba(59,130,246,0.11) 0%, transparent 70%);
+      top: -180px; left: -120px;
+      animation: orbDrift 14s ease-in-out infinite;
+    }
+    .bg-orb-2 {
+      width: 520px; height: 520px;
+      background: radial-gradient(circle, rgba(139,92,246,0.09) 0%, transparent 70%);
+      top: 28%; right: -140px;
+      animation: orbDrift 18s ease-in-out infinite reverse;
+    }
+    .bg-orb-3 {
+      width: 420px; height: 420px;
+      background: radial-gradient(circle, rgba(16,185,129,0.07) 0%, transparent 70%);
+      bottom: 18%; left: 8%;
+      animation: orbDrift 22s ease-in-out infinite; animation-delay: -6s;
+    }
+    @keyframes orbDrift {
+      0%, 100% { transform: translateY(0) translateX(0) scale(1); }
+      33%       { transform: translateY(-28px) translateX(12px) scale(1.04); }
+      66%       { transform: translateY(18px)  translateX(-8px) scale(0.97); }
+    }
+
+    /* ── Shared ─────────────────────────────────────────────────────────── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+    .section    { padding: 80px 0; }
+
+    /* Section label with number pill */
+    .section-label {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 12px; font-weight: 700; letter-spacing: 2px;
+      text-transform: uppercase; color: var(--blue); margin-bottom: 12px;
+    }
+    .section-num {
+      width: 20px; height: 20px; border-radius: 50%;
+      background: var(--blue); color: #fff;
+      font-size: 9px; font-weight: 900; letter-spacing: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .section-title {
+      font-size: clamp(24px, 4vw, 38px); font-weight: 800;
+      line-height: 1.2; margin-bottom: 16px;
+    }
+    .section-sub { font-size: 16px; color: var(--muted); max-width: 540px; line-height: 1.7; }
+    .centered    { text-align: center; }
+    .centered .section-sub { margin: 0 auto; }
+    .centered .section-label { display: flex; justify-content: center; }
+
+    /* Mobile section separator — gradient accent line before each new section */
+    .section-sep {
+      display: none;
+      height: 2px; margin: 0 20px;
+      background: linear-gradient(90deg, transparent, var(--blue) 30%, var(--purple) 70%, transparent);
+      border-radius: 2px; position: relative; z-index: 1;
+    }
+
+    /* ── Buttons ────────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 14px 28px; border-radius: 12px;
+      font-size: 16px; font-weight: 700; cursor: pointer;
+      border: none; transition: transform .18s ease, box-shadow .18s ease;
+      white-space: nowrap;
+    }
+    .btn:hover { transform: translateY(-3px); }
+    .btn-primary {
+      background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+      color: #fff; box-shadow: 0 4px 24px rgba(59,130,246,.40);
+      animation: btnGlow 3s ease-in-out infinite;
+    }
+    .btn-primary:hover { box-shadow: 0 10px 36px rgba(59,130,246,.60); animation: none; }
+    @keyframes btnGlow {
+      0%, 100% { box-shadow: 0 4px 24px rgba(59,130,246,.40); }
+      50%       { box-shadow: 0 4px 36px rgba(59,130,246,.65); }
+    }
+    .btn-outline {
+      background: transparent; color: var(--blue);
+      border: 1.5px solid rgba(59,130,246,.5);
+    }
+    .btn-outline:hover { box-shadow: 0 8px 24px rgba(59,130,246,.20); border-color: var(--blue); }
+    .nav-cta { padding: 10px 20px; font-size: 14px; }
+
+    /* ── Badges ─────────────────────────────────────────────────────────── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700;
+    }
+    .badge-red    { background: rgba(239,68,68,.15);  color: var(--red);    border: 1px solid rgba(239,68,68,.3); }
+    .badge-amber  { background: rgba(245,158,11,.15); color: var(--amber);  border: 1px solid rgba(245,158,11,.3); }
+    .badge-green  { background: rgba(16,185,129,.15); color: var(--green);  border: 1px solid rgba(16,185,129,.3); }
+    .badge-blue   { background: rgba(59,130,246,.15); color: var(--blue);   border: 1px solid rgba(59,130,246,.3); }
+    .badge-purple { background: rgba(139,92,246,.15); color: var(--purple); border: 1px solid rgba(139,92,246,.3); }
+
+    /* ── Scroll Reveal ──────────────────────────────────────────────────── */
+    .reveal {
+      opacity: 0; transform: translateY(28px);
+      transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1);
+    }
+    .reveal.visible { opacity: 1; transform: translateY(0); }
+    .reveal-scale {
+      opacity: 0; transform: translateY(20px) scale(0.95);
+      transition: opacity 0.7s cubic-bezier(0.16,1,0.3,1), transform 0.7s cubic-bezier(0.16,1,0.3,1);
+    }
+    .reveal-scale.visible { opacity: 1; transform: translateY(0) scale(1); }
+    .d1 { transition-delay: 0.09s; } .d2 { transition-delay: 0.18s; }
+    .d3 { transition-delay: 0.27s; } .d4 { transition-delay: 0.36s; }
+    .d5 { transition-delay: 0.45s; } .d6 { transition-delay: 0.54s; }
+
+    /* ── Nav ────────────────────────────────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(2,6,23,.88); backdrop-filter: blur(18px);
+      border-bottom: 1px solid var(--card-border);
+      animation: navDown 0.55s cubic-bezier(0.16,1,0.3,1) both;
+    }
+    @keyframes navDown {
+      from { transform: translateY(-100%); opacity: 0; }
+      to   { transform: translateY(0);     opacity: 1; }
+    }
+    .nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      max-width: 1100px; margin: 0 auto; padding: 16px 24px;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 800; }
+    .nav-logo svg { width: 32px; height: 32px; flex-shrink: 0; }
+    .nav-links { display: flex; align-items: center; gap: 24px; }
+    .nav-links a { font-size: 14px; color: var(--muted); transition: color .15s; }
+    .nav-links a:hover { color: var(--text); }
+
+    .menu-toggle {
+      display: none; background: none; border: 1px solid var(--card-border);
+      color: var(--text); padding: 8px 12px; border-radius: 8px;
+      cursor: pointer; font-size: 18px; line-height: 1; transition: background .15s;
+    }
+    .menu-toggle:hover { background: var(--card-bg); }
+
+    .mobile-menu {
+      display: none; flex-direction: column;
+      position: absolute; top: 100%; left: 0; right: 0;
+      background: rgba(2,6,23,.97); backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--card-border);
+      padding: 12px 24px 20px; gap: 4px;
+      animation: menuSlide 0.25s ease;
+    }
+    .mobile-menu.open { display: flex; }
+    @keyframes menuSlide {
+      from { opacity: 0; transform: translateY(-8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .mobile-menu a {
+      font-size: 16px; color: var(--muted); padding: 14px 0;
+      border-bottom: 1px solid var(--card-border); transition: color .15s;
+    }
+    .mobile-menu a:last-of-type { border-bottom: none; }
+    .mobile-menu a:hover { color: var(--text); }
+    .mob-dl { margin-top: 12px; }
+    .mob-dl .btn { width: 100%; }
+
+    /* ── Hero ────────────────────────────────────────────────────────────── */
+    .hero {
+      padding: 100px 0 80px;
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 60px; align-items: center;
+    }
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.25);
+      color: var(--blue); font-size: 13px; font-weight: 600;
+      padding: 6px 14px; border-radius: 20px; margin-bottom: 24px;
+      animation: fadeUp 0.7s 0.10s cubic-bezier(0.16,1,0.3,1) both;
+    }
+    .hero-title {
+      font-size: clamp(32px, 5vw, 56px); font-weight: 900; line-height: 1.1; margin-bottom: 20px;
+      animation: fadeUp 0.7s 0.20s cubic-bezier(0.16,1,0.3,1) both;
+    }
+    .hero-title span { color: var(--blue); }
+    .hero-desc {
+      font-size: 17px; color: var(--muted); margin-bottom: 36px; line-height: 1.7;
+      animation: fadeUp 0.7s 0.30s cubic-bezier(0.16,1,0.3,1) both;
+    }
+    .hero-btns {
+      display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
+      animation: fadeUp 0.7s 0.40s cubic-bezier(0.16,1,0.3,1) both;
+    }
+    .hero-note {
+      margin-top: 20px; font-size: 12px; color: var(--muted);
+      animation: fadeUp 0.7s 0.50s cubic-bezier(0.16,1,0.3,1) both;
+    }
+    .hero-note span { color: var(--green); }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Phone mockup ────────────────────────────────────────────────────── */
+    .phone-wrap {
+      display: flex; justify-content: center; align-items: center;
+      position: relative;
+      animation: fadeUp 0.85s 0.30s cubic-bezier(0.16,1,0.3,1) both;
+    }
+    .phone-shell {
+      width: 220px; height: 440px; border-radius: 36px;
+      background: linear-gradient(145deg, #1E293B, #0F172A);
+      border: 2px solid rgba(255,255,255,.12);
+      box-shadow: 0 40px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.06);
+      display: flex; flex-direction: column; overflow: hidden; position: relative;
+      animation: phoneFloat 5.5s ease-in-out infinite;
+    }
+    @keyframes phoneFloat {
+      0%, 100% { transform: translateY(0) rotate(0.3deg); }
+      50%       { transform: translateY(-12px) rotate(-0.3deg); }
+    }
+    .phone-notch {
+      width: 80px; height: 20px; background: #020617;
+      border-radius: 0 0 14px 14px; margin: 0 auto; flex-shrink: 0;
+    }
+    .phone-screen {
+      flex: 1; padding: 12px 10px; display: flex; flex-direction: column; gap: 8px;
+      position: relative; overflow: hidden;
+    }
+    .phone-screen::after {
+      content: ''; position: absolute; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent 0%, rgba(59,130,246,.7) 50%, transparent 100%);
+      animation: scanLine 3.5s ease-in-out infinite;
+    }
+    @keyframes scanLine {
+      0%  { top: 0%;   opacity: 0; }
+      8%  { opacity: 1; }
+      92% { opacity: 1; }
+      100%{ top: 100%; opacity: 0; }
+    }
+    .ps-header { font-size: 11px; font-weight: 700; color: var(--text); }
+    .ps-score-row { display: flex; gap: 6px; }
+    .ps-stat {
+      flex: 1; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.08);
+      border-radius: 8px; padding: 6px 8px; font-size: 9px; color: var(--muted);
+    }
+    .ps-stat b { display: block; font-size: 14px; color: var(--text); }
+    .ps-app {
+      background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08);
+      border-radius: 8px; padding: 8px 10px; display: flex;
+      align-items: center; gap: 8px; font-size: 9px;
+      opacity: 0; animation: rowSlide 0.4s ease forwards;
+    }
+    .ps-app:nth-child(4) { animation-delay: 1.0s; }
+    .ps-app:nth-child(5) { animation-delay: 1.4s; }
+    .ps-app:nth-child(6) { animation-delay: 1.8s; }
+    .ps-app:nth-child(7) { animation-delay: 2.2s; }
+    @keyframes rowSlide {
+      from { opacity: 0; transform: translateX(-10px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .ps-icon { width: 24px; height: 24px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+    .ps-app-info { flex: 1; }
+    .ps-app-name { font-size: 10px; font-weight: 600; color: var(--text); }
+    .ps-app-sub  { color: var(--muted); margin-top: 1px; }
+    .glow-ring {
+      position: absolute; width: 320px; height: 320px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(59,130,246,.15) 0%, transparent 70%);
+      top: 50%; left: 50%; transform: translate(-50%,-50%);
+      pointer-events: none; animation: glowPulse 4s ease-in-out infinite;
+    }
+    @keyframes glowPulse {
+      0%, 100% { opacity: 0.7; transform: translate(-50%,-50%) scale(1); }
+      50%       { opacity: 1;   transform: translate(-50%,-50%) scale(1.12); }
+    }
+
+    /* ── Stats ───────────────────────────────────────────────────────────── */
+    .stats-bar {
+      border-top: 1px solid var(--card-border); border-bottom: 1px solid var(--card-border);
+      padding: 32px 0; position: relative; z-index: 1;
+    }
+    .stats-inner { display: flex; justify-content: space-around; flex-wrap: wrap; gap: 24px; }
+    .stat-item { text-align: center; }
+    .stat-num  { font-size: 36px; font-weight: 900; color: var(--blue); }
+    .stat-lbl  { font-size: 13px; color: var(--muted); margin-top: 4px; }
+
+    /* ── Features ────────────────────────────────────────────────────────── */
+    .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 52px; }
+    .feature-card {
+      background: var(--card-bg); border: 1px solid var(--card-border);
+      border-radius: var(--radius); padding: 28px;
+      transition: border-color .25s, transform .25s ease, box-shadow .25s;
+    }
+    .feature-card:hover { border-color: rgba(59,130,246,.45); transform: translateY(-5px); box-shadow: 0 20px 48px rgba(0,0,0,.35); }
+    .feature-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; margin-bottom: 16px; transition: transform .25s; }
+    .feature-card:hover .feature-icon { transform: scale(1.12) rotate(-4deg); }
+    .feature-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+    .feature-desc  { font-size: 13px; color: var(--muted); line-height: 1.6; }
+    .feature-tag   { margin-top: 14px; }
+
+    /* ── How it works ────────────────────────────────────────────────────── */
+    .steps { display: grid; grid-template-columns: repeat(3,1fr); gap: 24px; margin-top: 52px; }
+    .step {
+      text-align: center; padding: 36px 24px;
+      background: var(--card-bg); border: 1px solid var(--card-border);
+      border-radius: var(--radius); transition: border-color .25s, transform .25s;
+    }
+    .step:hover { border-color: rgba(59,130,246,.35); transform: translateY(-4px); }
+    .step-num {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: rgba(59,130,246,.15); border: 2px solid rgba(59,130,246,.35);
+      color: var(--blue); font-size: 20px; font-weight: 900;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 20px; transition: background .25s, border-color .25s;
+    }
+    .step:hover .step-num { background: rgba(59,130,246,.28); border-color: rgba(59,130,246,.65); }
+    .step-title { font-size: 17px; font-weight: 700; margin-bottom: 10px; }
+    .step-desc  { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+    /* ── Risk levels ─────────────────────────────────────────────────────── */
+    .risk-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; margin-top: 52px; }
+    .risk-card { padding: 28px; border-radius: var(--radius); text-align: center; transition: transform .25s, box-shadow .25s; }
+    .risk-card:hover { transform: translateY(-5px); box-shadow: 0 20px 48px rgba(0,0,0,.3); }
+    .risk-high   { background: rgba(239,68,68,.08);  border: 1px solid rgba(239,68,68,.25); }
+    .risk-medium { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.25); }
+    .risk-low    { background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.25); }
+    .risk-score  { font-size: 40px; font-weight: 900; margin-bottom: 6px; }
+    .risk-high   .risk-score { color: var(--red); }
+    .risk-medium .risk-score { color: var(--amber); }
+    .risk-low    .risk-score { color: var(--green); }
+    .risk-label  { font-size: 13px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px; }
+    .risk-desc   { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+    /* ── Install guide ───────────────────────────────────────────────────── */
+    .install-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: stretch; margin-top: 52px; }
+    .install-steps { display: flex; flex-direction: column; gap: 20px; }
+    .install-step  { display: flex; gap: 16px; align-items: flex-start; }
+    .inst-num {
+      width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+      background: rgba(59,130,246,.15); border: 1.5px solid rgba(59,130,246,.4);
+      color: var(--blue); font-size: 13px; font-weight: 800;
+      display: flex; align-items: center; justify-content: center; margin-top: 2px;
+      transition: background .2s, border-color .2s;
+    }
+    .install-step:hover .inst-num { background: rgba(59,130,246,.28); border-color: rgba(59,130,246,.7); }
+    .inst-title { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+    .inst-desc  { font-size: 13px; color: var(--muted); line-height: 1.6; }
+    .inst-note  {
+      background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.25);
+      border-radius: 10px; padding: 16px; margin-top: 8px;
+      font-size: 12px; color: var(--amber); line-height: 1.6;
+    }
+    .install-cta {
+      background: var(--card-bg); border: 1px solid var(--card-border);
+      border-radius: var(--radius); padding: 36px; text-align: center;
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 18px;
+    }
+    .qr-label {
+      font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+      text-transform: uppercase; color: var(--blue);
+    }
+    .qr-img {
+      width: 200px; height: 200px; border-radius: 14px;
+      border: 2px solid rgba(59,130,246,.40);
+      background: #0F172A; display: block;
+    }
+    .qr-hint { font-size: 13px; color: var(--muted); text-align: center; line-height: 1.6; }
+
+    /* ── Footer ──────────────────────────────────────────────────────────── */
+    footer {
+      border-top: 1px solid var(--card-border);
+      padding: 40px 0; text-align: center; position: relative; z-index: 1;
+    }
+    .footer-logo { font-size: 22px; font-weight: 900; margin-bottom: 8px; }
+    .footer-logo span { color: var(--blue); }
+    .footer-sub  { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+    .footer-links { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; margin-bottom: 24px; }
+    .footer-links a { font-size: 13px; color: var(--muted); transition: color .15s; }
+    .footer-links a:hover { color: var(--blue); }
+    .footer-copy { font-size: 12px; color: rgba(156,163,175,.5); }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       RESPONSIVE — Tablet (≤ 900px)
+    ════════════════════════════════════════════════════════════════════════ */
+    @media (max-width: 900px) {
+      /* Stack hero, show phone below text (smaller) */
+      .hero {
+        grid-template-columns: 1fr; text-align: center;
+        padding: 70px 0 52px; gap: 40px;
+      }
+      .hero-btns  { justify-content: center; }
+      .hero-note  { text-align: center; }
+
+      /* Tablet phone: visible but smaller */
+      .phone-wrap { display: flex; }
+      .phone-shell {
+        width: 170px; height: 330px; border-radius: 28px;
+        border-width: 1.5px;
+      }
+      .phone-notch { width: 60px; height: 16px; }
+      .phone-screen { padding: 10px 8px; gap: 6px; }
+      .ps-stat b  { font-size: 12px; }
+      /* Show only 2 app rows on tablet */
+      .ps-app:nth-child(6),
+      .ps-app:nth-child(7) { display: none; }
+      .glow-ring  { width: 240px; height: 240px; }
+
+      .features-grid { grid-template-columns: 1fr 1fr; }
+      .steps         { grid-template-columns: 1fr; }
+      .risk-grid     { grid-template-columns: 1fr; }
+      .install-grid  { grid-template-columns: 1fr; }
+      .install-cta   { padding: 28px; }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       RESPONSIVE — Large phone (≤ 768px)
+    ════════════════════════════════════════════════════════════════════════ */
+    @media (max-width: 768px) {
+      /* Hamburger nav */
+      .nav-links   { display: none; }
+      .nav-cta     { display: none; }
+      .menu-toggle { display: block; }
+      .nav-inner   { padding: 14px 20px; }
+
+      .container { padding: 0 20px; }
+      .section   { padding: 60px 0; }
+
+      /* Show section separators */
+      .section-sep { display: block; }
+
+      /* Section label: add left accent bar on mobile */
+      .section-label {
+        font-size: 11px; letter-spacing: 1.5px;
+        border-left: 3px solid var(--blue); padding-left: 10px;
+      }
+      .centered .section-label { border-left: none; padding-left: 0; justify-content: center; }
+
+      /* Stats: 2×2 grid */
+      .stats-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; justify-items: center; }
+      .stat-num  { font-size: 30px; }
+
+      .features-grid { gap: 14px; }
+      .feature-card  { padding: 22px; }
+      .steps { gap: 16px; }
+      .step  { padding: 28px 20px; }
+      .risk-grid { gap: 14px; }
+      .risk-card { padding: 24px 20px; }
+      .install-steps { gap: 16px; }
+      .install-grid  { gap: 28px; }
+
+      /* Hide QR card on mobile (can't scan your own screen) */
+      .install-cta { display: none; }
+      .install-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       RESPONSIVE — Small phone (≤ 600px)
+    ════════════════════════════════════════════════════════════════════════ */
+    @media (max-width: 600px) {
+      .features-grid { grid-template-columns: 1fr; }
+      .section   { padding: 48px 0; }
+      .container { padding: 0 16px; }
+
+      .hero       { padding: 56px 0 44px; gap: 36px; }
+      .hero-title { font-size: clamp(28px, 8vw, 38px); }
+      .hero-desc  { font-size: 15px; margin-bottom: 28px; }
+      .hero-eyebrow { font-size: 12px; margin-bottom: 18px; }
+      .hero-btns  { flex-direction: column; align-items: stretch; gap: 12px; }
+      .hero-btns .btn { width: 100%; font-size: 15px; padding: 15px; }
+      .hero-note  { font-size: 11px; }
+
+      /* Phone: even smaller on small phones */
+      .phone-shell { width: 145px; height: 285px; border-radius: 22px; }
+      .phone-notch { width: 50px; height: 14px; }
+      .phone-screen { padding: 8px 7px; gap: 5px; }
+      .ps-stat b  { font-size: 11px; }
+      .ps-app-name { font-size: 9px; }
+      /* Only 1 app row on small phones */
+      .ps-app:nth-child(5),
+      .ps-app:nth-child(6),
+      .ps-app:nth-child(7) { display: none; }
+
+      .stats-bar   { padding: 24px 0; }
+      .stats-inner { gap: 14px; }
+      .stat-num    { font-size: 26px; }
+      .stat-lbl    { font-size: 11px; }
+
+      .section-title { font-size: clamp(22px, 6vw, 30px); }
+      .section-sub   { font-size: 14px; }
+
+      .feature-card { padding: 20px 18px; }
+      .feature-title { font-size: 15px; }
+      .step         { padding: 24px 16px; }
+      .step-title   { font-size: 16px; }
+      .risk-score   { font-size: 34px; }
+      .risk-card    { padding: 22px 16px; }
+      .install-cta  { padding: 24px 20px; gap: 16px; }
+      .install-cta .big-icon { font-size: 44px; }
+      .install-cta h3 { font-size: 19px; }
+      .install-cta .btn { font-size: 15px; padding: 14px 24px; }
+
+      .footer-links { gap: 14px; }
+      .footer-logo  { font-size: 20px; }
+      .footer-sub   { font-size: 12px; }
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       RESPONSIVE — Very small phone (≤ 400px)
+    ════════════════════════════════════════════════════════════════════════ */
+    @media (max-width: 400px) {
+      /* Hide phone mockup — too cramped */
+      .phone-wrap   { display: none; }
+      .hero         { gap: 0; }
+      .nav-logo     { font-size: 17px; }
+      .nav-logo svg { width: 26px; height: 26px; }
+      .hero-title   { font-size: 26px; }
+      .stat-num     { font-size: 22px; }
+      .risk-score   { font-size: 28px; }
+      .install-cta .btn { width: 100%; }
+    }
+
+    /* Reduce orb blur on mobile for performance */
+    @media (max-width: 768px) {
+      .bg-orb-1 { width: 300px; height: 300px; filter: blur(50px); }
+      .bg-orb-2 { width: 240px; height: 240px; filter: blur(50px); }
+      .bg-orb-3 { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="bg-orb bg-orb-1"></div>
+<div class="bg-orb bg-orb-2"></div>
+<div class="bg-orb bg-orb-3"></div>
+
+<!-- ── Navigation ──────────────────────────────────────────────────────── -->
+<nav>
+  <div class="nav-inner">
+    <div class="nav-logo">
+      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="navGrad" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#1E3A8A"/>
+            <stop offset="1" stop-color="#2563EB"/>
+          </linearGradient>
+        </defs>
+        <rect width="32" height="32" rx="8" fill="url(#navGrad)"/>
+        <path d="M16,8.3 L9.7,11.1 V15.3 c0,3.885 2.688,7.518 6.3,8.4 3.612,-0.882 6.3,-4.515 6.3,-8.4 V11.1 Z" fill="white"/>
+        <circle cx="16" cy="15.8" r="2"      fill="#2563EB"/>
+        <circle cx="16" cy="15.8" r="1"      fill="#1E3A8A"/>
+        <circle cx="16.6" cy="15.2" r="0.45" fill="white" opacity="0.9"/>
+      </svg>
+      PrivyScan
+    </div>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#risk">Risk Levels</a>
+      <a href="#install">Install</a>
+    </div>
+    <!-- Replace href with your actual APK download URL -->
+    <a href="./PrivyScan.apk" class="btn btn-primary nav-cta" download="PrivyScan.apk">⬇ Download APK</a>
+    <button class="menu-toggle" id="menuToggle" aria-label="Open menu">☰</button>
+  </div>
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="#features">Features</a>
+    <a href="#how-it-works">How it works</a>
+    <a href="#risk">Risk Levels</a>
+    <a href="#install">Install</a>
+    <div class="mob-dl">
+      <a href="./PrivyScan.apk" class="btn btn-primary" download="PrivyScan.apk">⬇ Download APK</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Hero ────────────────────────────────────────────────────────────── -->
+<div class="container">
+  <div class="hero">
+    <div>
+      <div class="hero-eyebrow">🛡️ Android Privacy Scanner · FYP 2026</div>
+      <h1 class="hero-title">Know what your<br/>apps are <span>hiding</span>.</h1>
+      <p class="hero-desc">
+        PrivyScan scans every installed app for dangerous permissions, hidden third-party trackers, and real-time background activity — giving you a single privacy score you can actually act on.
+      </p>
+      <div class="hero-btns">
+        <a href="./PrivyScan.apk" class="btn btn-primary" download="PrivyScan.apk">⬇ Download APK (Free)</a>
+        <a href="#how-it-works" class="btn btn-outline">See how it works</a>
+      </div>
+      <p class="hero-note">
+        <span>✓</span> Free &nbsp;·&nbsp; <span>✓</span> No account &nbsp;·&nbsp; <span>✓</span> Android 11+
+      </p>
+    </div>
+
+    <div class="phone-wrap">
+      <div class="glow-ring"></div>
+      <div class="phone-shell">
+        <div class="phone-notch"></div>
+        <div class="phone-screen">
+          <div class="ps-header">📡 PrivyScan</div>
+          <div class="ps-score-row">
+            <div class="ps-stat"><b style="color:#10B981">72</b>Score</div>
+            <div class="ps-stat"><b style="color:#EF4444">3</b>HIGH</div>
+            <div class="ps-stat"><b style="color:#F59E0B">5</b>MED</div>
+          </div>
+          <div style="font-size:9px;color:#9CA3AF;margin-top:2px">Risky Apps Found</div>
+          <div class="ps-app">
+            <div class="ps-icon" style="background:rgba(239,68,68,.15)">📷</div>
+            <div class="ps-app-info">
+              <div class="ps-app-name">SocialApp</div>
+              <div class="ps-app-sub">Camera · Mic · Location</div>
+            </div>
+            <span class="badge badge-red" style="font-size:8px;padding:3px 8px">HIGH</span>
+          </div>
+          <div class="ps-app">
+            <div class="ps-icon" style="background:rgba(245,158,11,.15)">🛒</div>
+            <div class="ps-app-info">
+              <div class="ps-app-name">ShopApp</div>
+              <div class="ps-app-sub">3 hidden trackers</div>
+            </div>
+            <span class="badge badge-amber" style="font-size:8px;padding:3px 8px">MED</span>
+          </div>
+          <div class="ps-app">
+            <div class="ps-icon" style="background:rgba(139,92,246,.15)">🎮</div>
+            <div class="ps-app-info">
+              <div class="ps-app-name">GameApp</div>
+              <div class="ps-app-sub">Contacts · Storage</div>
+            </div>
+            <span class="badge badge-amber" style="font-size:8px;padding:3px 8px">MED</span>
+          </div>
+          <div class="ps-app">
+            <div class="ps-icon" style="background:rgba(16,185,129,.15)">📞</div>
+            <div class="ps-app-info">
+              <div class="ps-app-name">CallApp</div>
+              <div class="ps-app-sub">No risky perms</div>
+            </div>
+            <span class="badge badge-green" style="font-size:8px;padding:3px 8px">LOW</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Stats bar ────────────────────────────────────────────────────────── -->
+<div class="stats-bar">
+  <div class="container">
+    <div class="stats-inner">
+      <div class="stat-item reveal">
+        <div class="stat-num" data-target="25" data-suffix="+">0+</div>
+        <div class="stat-lbl">SDK Trackers Detected</div>
+      </div>
+      <div class="stat-item reveal d1">
+        <div class="stat-num">0–10</div>
+        <div class="stat-lbl">Hybrid Risk Score</div>
+      </div>
+      <div class="stat-item reveal d2">
+        <div class="stat-num" data-target="3">0</div>
+        <div class="stat-lbl">Risk Levels</div>
+      </div>
+      <div class="stat-item reveal d3">
+        <div class="stat-num">Real-time</div>
+        <div class="stat-lbl">Dynamic Monitoring</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Section separator (visible on mobile only) -->
+<div class="section-sep"></div>
+
+<!-- ── Features ──────────────────────────────────────────────────────────── -->
+<div class="container section" id="features">
+  <div class="centered reveal">
+    <div class="section-label"><span class="section-num">01</span>What PrivyScan detects</div>
+    <h2 class="section-title">Six layers of privacy protection</h2>
+    <p class="section-sub">Most privacy tools only check declared permissions. PrivyScan goes deeper — combining static, dynamic, and tracker analysis into one score.</p>
+  </div>
+  <div class="features-grid">
+    <div class="feature-card reveal">
+      <div class="feature-icon" style="background:rgba(59,130,246,.12)">🔒</div>
+      <div class="feature-title">Static Permission Analysis</div>
+      <div class="feature-desc">Scans only <em>granted</em> dangerous permissions — not just what the app declared. Removes false positives from permissions the user never approved.</div>
+      <div class="feature-tag"><span class="badge badge-blue">Static</span></div>
+    </div>
+    <div class="feature-card reveal d2">
+      <div class="feature-icon" style="background:rgba(139,92,246,.12)">👁️</div>
+      <div class="feature-title">Real-time Dynamic Monitor</div>
+      <div class="feature-desc">Uses Android's Accessibility Service to watch for camera, microphone, and location use in the background — while you're using other apps.</div>
+      <div class="feature-tag"><span class="badge badge-purple">Dynamic</span></div>
+    </div>
+    <div class="feature-card reveal d4">
+      <div class="feature-icon" style="background:rgba(245,158,11,.12)">🕵️</div>
+      <div class="feature-title">Hidden SDK Tracker Detection</div>
+      <div class="feature-desc">Fingerprints 25+ third-party SDKs — advertising networks, analytics, and fingerprinting libraries — embedded inside apps without the user's knowledge.</div>
+      <div class="feature-tag"><span class="badge badge-amber">Trackers</span></div>
+    </div>
+    <div class="feature-card reveal d1">
+      <div class="feature-icon" style="background:rgba(16,185,129,.12)">📊</div>
+      <div class="feature-title">Hybrid Risk Scoring</div>
+      <div class="feature-desc">Blends static permission scores with live dynamic evidence into a single 0–10 risk score. A clean app stays clean even if a background event fires briefly.</div>
+      <div class="feature-tag"><span class="badge badge-green">Scoring</span></div>
+    </div>
+    <div class="feature-card reveal d3">
+      <div class="feature-icon" style="background:rgba(59,130,246,.12)">🕐</div>
+      <div class="feature-title">Scan History</div>
+      <div class="feature-desc">Stores your last 20 scans with a full threat snapshot — tap any past scan to see exactly which apps were risky on that date.</div>
+      <div class="feature-tag"><span class="badge badge-blue">History</span></div>
+    </div>
+    <div class="feature-card reveal d5">
+      <div class="feature-icon" style="background:rgba(239,68,68,.12)">💡</div>
+      <div class="feature-title">Actionable Privacy Tips</div>
+      <div class="feature-desc">Every risky app gets specific, step-by-step recommendations: which permissions to revoke, what each tracker collects, and whether the risk can be reduced.</div>
+      <div class="feature-tag"><span class="badge badge-red">Tips</span></div>
+    </div>
+  </div>
+</div>
+
+<div class="section-sep"></div>
+
+<!-- ── How it works ───────────────────────────────────────────────────────── -->
+<div style="background:rgba(255,255,255,.02);border-top:1px solid var(--card-border);border-bottom:1px solid var(--card-border);position:relative;z-index:1">
+<div class="container section" id="how-it-works">
+  <div class="centered reveal">
+    <div class="section-label"><span class="section-num">02</span>Simple 3-step process</div>
+    <h2 class="section-title">Scan. Review. Act.</h2>
+    <p class="section-sub">PrivyScan is built for users who aren't security experts — clear results, plain language, and actions you can actually take.</p>
+  </div>
+  <div class="steps">
+    <div class="step reveal">
+      <div class="step-num">1</div>
+      <div class="step-title">Tap "Scan All Apps"</div>
+      <div class="step-desc">PrivyScan reads every installed app's granted permissions, checks for known tracker SDKs, and merges live dynamic data from the monitor — all in under 30 seconds.</div>
+    </div>
+    <div class="step reveal d3">
+      <div class="step-num">2</div>
+      <div class="step-title">Review your Risk Score</div>
+      <div class="step-desc">See a privacy score from 0–100, a list of HIGH and MEDIUM risk apps, hidden trackers found, and any background activity detected since monitoring started.</div>
+    </div>
+    <div class="step reveal d5">
+      <div class="step-num">3</div>
+      <div class="step-title">Revoke &amp; Rescan</div>
+      <div class="step-desc">Tap any risky app for specific tips. Revoke unnecessary permissions directly from Android Settings. Rescan to see your updated score — the dashboard will prompt you automatically.</div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="section-sep"></div>
+
+<!-- ── Risk levels ─────────────────────────────────────────────────────────── -->
+<div class="container section" id="risk">
+  <div class="centered reveal">
+    <div class="section-label"><span class="section-num">03</span>Risk classification</div>
+    <h2 class="section-title">Three clear risk levels</h2>
+    <p class="section-sub">Every app gets a hybrid score based on permissions, trackers, and real-time behaviour. No vague warnings — just a clear verdict.</p>
+  </div>
+  <div class="risk-grid">
+    <div class="risk-card risk-high reveal-scale">
+      <div class="risk-score">≥ 7.0</div>
+      <div class="risk-label" style="color:var(--red)">HIGH Risk</div>
+      <div class="risk-desc">App holds multiple sensitive permissions, known tracking SDKs, or was detected accessing camera/mic/location in the background. Immediate action recommended.</div>
+    </div>
+    <div class="risk-card risk-medium reveal-scale d2">
+      <div class="risk-score">4.0–6.9</div>
+      <div class="risk-label" style="color:var(--amber)">MEDIUM Risk</div>
+      <div class="risk-desc">App has notable permissions or trackers but no confirmed background abuse. Review what it has access to and revoke anything you don't need it to have.</div>
+    </div>
+    <div class="risk-card risk-low reveal-scale d4">
+      <div class="risk-score">&lt; 4.0</div>
+      <div class="risk-label" style="color:var(--green)">LOW Risk</div>
+      <div class="risk-desc">App has minimal permissions, no known trackers detected, and no suspicious background activity observed. No action needed.</div>
+    </div>
+  </div>
+</div>
+
+<div class="section-sep"></div>
+
+<!-- ── Install guide ───────────────────────────────────────────────────────── -->
+<div style="background:rgba(255,255,255,.02);border-top:1px solid var(--card-border);border-bottom:1px solid var(--card-border);position:relative;z-index:1">
+<div class="container section" id="install">
+  <div class="centered reveal">
+    <div class="section-label"><span class="section-num">04</span>Installation guide</div>
+    <h2 class="section-title">Install in 4 steps</h2>
+    <p class="section-sub">PrivyScan is distributed as an APK outside the Play Store. Android requires one extra permission step — here's exactly what to do.</p>
+  </div>
+  <div class="install-grid">
+    <div class="install-steps">
+      <div class="install-step reveal">
+        <div class="inst-num">1</div>
+        <div>
+          <div class="inst-title">Download the APK</div>
+          <div class="inst-desc">Tap the Download button or scan the QR code. The APK file will save to your device's Downloads folder.</div>
+        </div>
+      </div>
+      <div class="install-step reveal d1">
+        <div class="inst-num">2</div>
+        <div>
+          <div class="inst-title">Open the APK file</div>
+          <div class="inst-desc">Open your Files app, go to Downloads, and tap <strong>PrivyScan.apk</strong>. Android will ask for permission to install from unknown sources.</div>
+        </div>
+      </div>
+      <div class="install-step reveal d2">
+        <div class="inst-num">3</div>
+        <div>
+          <div class="inst-title">Allow "Install unknown apps"</div>
+          <div class="inst-desc">Tap <strong>Settings</strong> on the prompt → toggle <strong>Allow from this source</strong> → press Back → tap <strong>Install</strong>.</div>
+          <div class="inst-note">⚠️ This only applies to the Files app. You can turn it off again after installation.</div>
+        </div>
+      </div>
+      <div class="install-step reveal d3">
+        <div class="inst-num">4</div>
+        <div>
+          <div class="inst-title">Grant Accessibility Service (optional)</div>
+          <div class="inst-desc">For real-time monitoring, go to <strong>Settings → Accessibility → PrivyScan Monitor</strong> and enable it. This lets PrivyScan detect background camera/mic/location use.</div>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      QR CODE SETUP (desktop only — hidden on mobile):
+      1. Host your APK on GitHub Releases (or Google Drive)
+      2. Copy the direct download link
+      3. Replace YOUR_APK_DOWNLOAD_URL_HERE below with that link
+      Example: https://github.com/YOU/REPO/releases/download/v1.0/PrivyScan.apk
+    -->
+    <div class="install-cta reveal d3">
+      <div class="qr-label">📱 Scan to Download</div>
+      <img
+        class="qr-img"
+        src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=YOUR_APK_DOWNLOAD_URL_HERE&color=3B82F6&bgcolor=0F172A&margin=10&qzone=1"
+        alt="Scan QR code to download PrivyScan"
+        width="200" height="200"
+        loading="lazy"
+      />
+      <p class="qr-hint">Point your phone camera at this code<br/>to download PrivyScan directly</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+        <span class="badge badge-green">✓ Free</span>
+        <span class="badge badge-blue">✓ Android 11+</span>
+        <span class="badge badge-purple">✓ No Account</span>
+      </div>
+      <p style="font-size:11px;color:rgba(239,68,68,.75);font-weight:600;line-height:1.5">
+        ⚠ Replace <code style="background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px">YOUR_APK_DOWNLOAD_URL_HERE</code><br/>in the HTML src before your demo
+      </p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ── Footer ──────────────────────────────────────────────────────────────── -->
+<footer>
+  <div class="container">
+    <div class="footer-logo reveal">Privy<span>Scan</span></div>
+    <div class="footer-sub reveal">Final Year Project · Universiti Tun Hussein Onn Malaysia (UTHM) · 2026</div>
+    <div class="footer-links reveal">
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How it works</a>
+      <a href="#risk">Risk Levels</a>
+      <a href="#install">Install Guide</a>
+      <a href="#" target="_blank">GitHub</a><!-- Replace # with your repo URL -->
+      <a href="mailto:lukh18hakim@gmail.com">Contact</a>
+    </div>
+    <div class="footer-copy reveal">© 2026 PrivyScan. Built for educational and research purposes.</div>
+  </div>
+</footer>
+
+<script>
+  // ── Hamburger menu ──────────────────────────────────────────────────────
+  const toggle = document.getElementById('menuToggle');
+  const menu   = document.getElementById('mobileMenu');
+  toggle.addEventListener('click', () => {
+    const open = menu.classList.toggle('open');
+    toggle.textContent = open ? '✕' : '☰';
+    toggle.setAttribute('aria-label', open ? 'Close menu' : 'Open menu');
+  });
+  menu.querySelectorAll('a').forEach(a => a.addEventListener('click', () => {
+    menu.classList.remove('open'); toggle.textContent = '☰';
+  }));
+  document.addEventListener('click', (e) => {
+    if (!menu.contains(e.target) && !toggle.contains(e.target)) {
+      menu.classList.remove('open'); toggle.textContent = '☰';
+    }
+  });
+
+  // ── Scroll-reveal ───────────────────────────────────────────────────────
+  const revealObs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) { e.target.classList.add('visible'); revealObs.unobserve(e.target); }
+    });
+  }, { threshold: 0.10, rootMargin: '0px 0px -32px 0px' });
+  document.querySelectorAll('.reveal, .reveal-scale').forEach(el => revealObs.observe(el));
+
+  // ── Stat counter animation ──────────────────────────────────────────────
+  function animateCount(el, target, suffix) {
+    const duration = 1400, t0 = performance.now();
+    (function tick(now) {
+      const p = Math.min((now - t0) / duration, 1);
+      el.textContent = Math.round((1 - Math.pow(1 - p, 3)) * target) + suffix;
+      if (p < 1) requestAnimationFrame(tick);
+    })(t0);
+  }
+  const counterObs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        animateCount(e.target, parseInt(e.target.dataset.target), e.target.dataset.suffix || '');
+        counterObs.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.5 });
+  document.querySelectorAll('[data-target]').forEach(el => counterObs.observe(el));
+</script>
+</body>
+</html>
